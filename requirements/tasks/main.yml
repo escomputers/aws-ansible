@@ -1,0 +1,29 @@
+#Installa dipendenze ansible
+- name: Installing ansible dependencies
+  shell: |
+    ansible-galaxy collection install amazon.aws
+    ansible-galaxy collection install community.general
+    
+#Controllo versione Python e dipendenze
+- name: Checking existing Python
+  community.general.python_requirements_info:
+    dependencies:
+      - boto3==1.23.5
+      - botocore==1.26.5
+      - awscli==1.24.5
+  register: python_check
+
+#Controlla versione Python su host locale
+- name: Checking Python version
+  debug: 
+    msg: "Please install Python at least 3.5"
+  when: python_check.failed != false
+
+#Installa PIP packages se non ci sono
+- name: Installing required PIP packages
+  pip: 
+    name: 
+      - botocore
+      - boto3
+      - awscli
+  when: python_check.not_found|length > 0

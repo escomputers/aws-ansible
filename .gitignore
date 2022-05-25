@@ -1,0 +1,5 @@
+# ignore ansible-vault password file
+groups_vars/all/secrets/*.yml
+#ignore credentials files
+*.pem
+inventory

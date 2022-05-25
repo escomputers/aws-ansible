@@ -1,0 +1,22 @@
+---
+
+- name: VM setup
+  connection: local
+  gather_facts: no
+  hosts: localhost
+  
+  tasks:   
+  #Connessione all'account aws
+  - name: Connecting to Aws account
+    shell: |
+      aws configure set aws_access_key_id "{{ ec2_key }}"
+      aws configure set aws_secret_access_key "{{ ec2_secret }}"
+      aws configure set default.region "{{ region }}"
+    tags:
+      - connect
+          
+
+
+     
+    
+  

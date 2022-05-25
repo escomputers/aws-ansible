@@ -1,0 +1,150 @@
+---
+
+- name: Aws setup
+  connection: local
+  gather_facts: no
+  hosts: localhost
+      
+  #Importa variabili utente
+  vars_files:
+    - "group_vars/all/vars.yml"
+  
+  roles:
+    - requirements
+    
+  #collections:
+  #  - name: "amazon.aws"
+  #    version: "3.2.0"
+  #   source: "https://galaxy.ansible.com"
+      
+  #  - name: "community.general"
+  #    version: "4.8.1"
+  #    source: "https://galaxy.ansible.com"
+  
+  tasks:   
+  #Connessione all'account aws
+  - name: Connecting to Aws account
+    shell: |
+      aws configure set aws_access_key_id "{{ ec2_key }}"
+      aws configure set aws_secret_access_key "{{ ec2_secret }}"
+      aws configure set default.region "{{ region }}"
+    tags:
+      - connect
+          
+  #Crea utente IAM
+  - name: Creating IAM user
+    community.aws.iam_user:
+      name: "{{ item }}"
+      state: present
+    loop:
+    - "{{ user1 }}"
+    register: add_user_result
+    tags:
+      - add_user
+      
+  #Crea chiavi di accesso per l'utente IAM
+  - name: Creating aws user's key
+    community.aws.iam_access_key:
+      user_name: "{{ user1 }}"
+      rotate_keys: yes
+    tags:
+      - add_user_keys
+    
+  #Crea gruppo utente, crea policy per accesso EC2 completo e aggiungi utente al gruppo
+  - name: Creating aws user group, policy and adding user to it
+    community.aws.iam_group:
+      name: "{{ item.name }}"
+      managed_policies: "{{ item.policy }}"
+      users: "{{ item.members }}"
+      state: present
+    loop: 
+      - { name: "{{ user_group }}", policy: arn:aws:iam::aws:policy/AmazonEC2FullAccess, members: ["{{ user1 }}"] }
+    register: add_group_ec2full_add_user
+    tags:
+      - add_group_ec2full_add_user
+    
+  #Crea coppia chiavi per accesso remoto
+  - name: Creating key-pair
+    amazon.aws.ec2_key:
+      name: "access-key"
+    register: ec2_key
+    
+  #Salva coppia chiavi in locale
+  - name: Saving keys
+    copy: content="{{ ec2_key.key.private_key }}" dest="./public-withebs-instance.pem" mode=0600
+    when: ec2_key.changed
+  
+  #Crea gruppo di sicurezza con SSH abilitato per le istanze
+  - name: Creating security-group for SSH connections
+    amazon.aws.ec2_group:
+      name: "default_sg"
+      description: "default_sg"
+      rules:
+        - proto: tcp
+          ports: 
+          - 22
+          cidr_ip: 0.0.0.0/0
+          rule_desc: allow SSH from public
+      state: present
+    tags:
+      - add_instance_security_group
+      
+  #Crea coppia chiavi SSH e instanze EC2
+  #- name: Creating EC2 instances
+  #  amazon.aws.ec2_instance:
+  #    name: "public-withebs-instance"
+  #    instance_type: "{{ instance_type }}"
+  #    image_id: "{{ os }}"
+  #    key_name: "access-key"
+  #    security_group: "default_sg"
+  #    count: "{{ instance_number }}"
+  #    volumes:
+  #      - device_name: /dev/sda1
+  #        ebs:
+  #          volume_size: "{{ volume_size }}"
+  #          delete_on_termination: true
+  #  tags:
+  #    - add_instances
+           
+  #Attendi il tempo di inizializzione istanze
+  #- name: Waiting instances to be initialized
+  #  wait_for:
+  #    timeout: 30
+  #  delegate_to: localhost
+    
+  #Filtra instanze
+  - name: Getting instances network informations
+    community.aws.ec2_instance_info:
+      filters:
+        "tag:Name": public-withebs-instance
+        instance-state-name: ["running"]
+    register: instances_data
+    tags:
+      - get_instance_info
+    
+  #Prendi indirizzi IP
+  - name: Getting IP addresses
+    set_fact:
+       ip_addresses: "{{ item.public_ip_address }}"
+       cacheable: yes
+    with_items: "{{ instances_data.instances }}"
+    tags:
+      - get_ipv4
+    
+  #Salvali su file per inventory
+  - name: Creating inventory
+    copy:
+      content: "[public-withebs-instance]
+      
+      {% for item in instances_data.instances %}{{item.public_ip_address}}
+      
+      {% endfor %}"
+      dest: inventory
+    
+  #Passa al playbook di configurazione VM
+  - name: Running next playbook
+    - include: vm_setup.yml
+
+     
+    
+  
