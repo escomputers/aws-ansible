@@ -1,19 +1,40 @@
 ---
 
 - name: VM setup
-  connection: local
+  hosts: aws_instances
   gather_facts: no
-  hosts: localhost
-  
+
   tasks:   
-  #Connessione all'account aws
-  - name: Connecting to Aws account
-    shell: |
-      aws configure set aws_access_key_id "{{ ec2_key }}"
-      aws configure set aws_secret_access_key "{{ ec2_secret }}"
-      aws configure set default.region "{{ region }}"
-    tags:
-      - connect
+  #Crea filesystem per la partizione docker
+  - name: Formatting empy volume with XFS
+    shell: sudo mkfs -t xfs /dev/xvdb && echo Present || echo Absent
+    register: filesystem
+    when: false
+  
+  #Crea directory per docker storage
+  - name: Creating docker directory
+    shell: sudo mkdir /{{ docker_path }} && echo Present || echo Absent
+    register: docker_dir
+    when: false
+  
+  #Monta directory
+  - name: Mounting docker directory
+    shell: sudo mount /dev/xvdb /{{ docker_path}} && echo Present || echo Absent
+    register: mount_docker_dir
+    when: false
+    
+  #Rendi persistente il montaggio anche in caso di reboot
+  - name: Ensuring persistent mounting
+    #get volume's UUID
+    shell: sudo lsblk -f | grep -v xvda | awk '! /[AEJK]/ {print $3}'
+    register: volume_UUID
+  
+  - name: debug
+    debug:
+      var: volume_UUID  
+   
+  #UUID=aebf131c-6957-451e-8d34-ec978d9581ae  /data  xfs  defaults,nofail  0  2
+
           
 
 
