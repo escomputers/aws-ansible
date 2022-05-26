@@ -13,31 +13,80 @@
   
   #Crea directory per docker storage
   - name: Creating docker directory
-    shell: sudo mkdir /{{ docker_path }} && echo Present || echo Absent
-    register: docker_dir
-    when: false
+    file: 
+      path: "{{ docker_path }}"
+      state: directory
   
   #Monta directory
   - name: Mounting docker directory
-    shell: sudo mount /dev/xvdb /{{ docker_path}} && echo Present || echo Absent
+    shell: sudo mount /dev/xvdb "{{ docker_path}}" && echo Present || echo Absent
     register: mount_docker_dir
     when: false
     
-  #Rendi persistente il montaggio anche in caso di reboot
-  - name: Ensuring persistent mounting
-    #get volume's UUID
+  #Prendi l'identificativo del volume non root
+  - name: Getting volume UUID
     shell: sudo lsblk -f | grep -v xvda | awk '! /[AEJK]/ {print $3}'
     register: volume_UUID
-  
-  - name: debug
-    debug:
-      var: volume_UUID  
-   
-  #UUID=aebf131c-6957-451e-8d34-ec978d9581ae  /data  xfs  defaults,nofail  0  2
-
-          
-
-
-     
+    
+  #Leggi fstab
+  - name: Reading fstab
+    register: fstab_result
+    shell: "cat /etc/fstab"
+    
+  #Monta volume all'avvio qualora non lo sia
+  - name: Editing fstab
+    become: yes
+    lineinfile:
+      path: /etc/fstab
+      line: UUID={{ volume_UUID.stdout }} {{ docker_path }}   xfs     defaults,nofail 0 2
+    register: edit_fstab
+    when: volume_UUID.stdout not in fstab_result.stdout
+    
+  #Ricarica demone di sistema
+  - name: Reloading system services
+    become: yes
+    systemd:
+      daemon_reload: yes
+    when: volume_UUID.stdout not in fstab_result.stdout
+    
+  #Installa Docker
+  - name: Checking current distribution
+    set_fact:
+        distribution: "{{ ansible_distro }}"
+        
+  - name: Downloading signing key
+    rpm_key:
+      key: "https://download.docker.com/linux/{{ distribution }}/gpg"
+      state: present
+    become: yes
+    
+  - name: Adding repository into system repo list
+    yum_repository:
+      name: docker
+      description: docker repo
+      baseurl: "https://download.docker.com/linux/{{ distribution }}/$releasever/$basearch/stable"
+      enabled: true
+      gpgcheck: true
+      gpgkey: "https://download.docker.com/linux/{{ distribution }}/gpg"
+    become: yes
+    
+  - name: Installing Docker
+    yum:
+      name:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - docker-compose-plugin
+      state: present
+    become: yes
+    
+  - name: Start Docker
+    service:
+      name: "docker"
+      enabled: true
+      state: started
+    become: yes
+    
+      
     
   
