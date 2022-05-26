@@ -1,11 +1,15 @@
-user1: ansible
-instance_number: "2"
-volume_size: 60 #in GiB
-docker_partition_size: 40 #in GiB
-
-#aws specific settings
+#Aws settings
 user_group: ec2full
 region: eu-west-3 
 instance_type: t2.micro
+instance_number: "2"
+user1: ansible
+
+#OS settings
 os: ami-08755c4342fb5aede #Aws RHEL ID
 instance_user: ec2-user #Change it according to os type
+ansible_distro: centos #Change it according to os type
+
+#Docker settings
+docker_volume_size: 40 #in GiB
+docker_path: /home/{{ instance_user }}/docker

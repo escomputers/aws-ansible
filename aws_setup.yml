@@ -90,27 +90,31 @@
       - add_instance_security_group
       
   #Crea coppia chiavi SSH e instanze EC2
-  #- name: Creating EC2 instances
-  #  amazon.aws.ec2_instance:
-  #    name: "public-withebs-instance"
-  #    instance_type: "{{ instance_type }}"
-  #    image_id: "{{ os }}"
-  #    key_name: "access-key"
-  #    security_group: "default_sg"
-  #    count: "{{ instance_number }}"
-  #    volumes:
-  #      - device_name: /dev/sda1
-  #        ebs:
-  #          volume_size: "{{ volume_size }}"
-  #          delete_on_termination: true
-  #  tags:
-  #    - add_instances
+  - name: Creating EC2 instances
+    amazon.aws.ec2_instance:
+      name: "public-withebs-instance"
+      instance_type: "{{ instance_type }}"
+      image_id: "{{ os }}"
+      key_name: "access-key"
+      security_group: "default_sg"
+      count: "{{ instance_number }}"
+      volumes:
+        - device_name: /dev/sda1
+          ebs:
+            volume_size: 10
+            delete_on_termination: true
+        - device_name: /dev/sda2
+          ebs:
+            volume_size: "{{ docker_volume_size }}"
+            delete_on_termination: true
+    tags:
+      - add_instances
            
   #Attendi il tempo di inizializzione istanze
-  #- name: Waiting instances to be initialized
-  #  wait_for:
-  #    timeout: 30
-  #  delegate_to: localhost
+  - name: Waiting instances to be initialized
+    wait_for:
+      timeout: 30
+    delegate_to: localhost
     
   #Filtra instanze
   - name: Getting instances network informations
@@ -125,7 +129,7 @@
   #Prendi indirizzi IP
   - name: Getting IP addresses
     set_fact:
-       ip_addresses: "{{ item.public_ip_address }}"
+       ip_addresses: "{{ item.public_dns_name }}"
        cacheable: yes
     with_items: "{{ instances_data.instances }}"
     tags:
@@ -134,16 +138,25 @@
   #Salvali su file per inventory
   - name: Creating inventory
     copy:
-      content: "[public-withebs-instance]
+      content: "[aws_instances]
       
-      {% for item in instances_data.instances %}{{item.public_ip_address}}
+      {% for item in instances_data.instances %}{{item.public_dns_name}}
       
-      {% endfor %}"
-      dest: inventory
+      {% endfor %}
+
+      [aws_instances:vars]
+      
+      ansible_connection = ssh
+      
+      ansible_user = {{ instance_user }}
+      
+      ansible_ssh_private_key_file = public-withebs-instance.pem
+      "
+      dest: inventory.yml
     
   #Passa al playbook di configurazione VM
-  - name: Running next playbook
-    - include: vm_setup.yml
+  #- name: Running next playbook
+  #  shell: ansible-playbook -i inventory.yml vm_setup.yml --ask-vault-pass
 
      
     
