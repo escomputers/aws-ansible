@@ -2,6 +2,7 @@
 
 - name: VM setup
   hosts: aws_instances
+  become: yes
   gather_facts: no
 
   tasks:   
@@ -16,7 +17,8 @@
     file: 
       path: "{{ docker_path }}"
       state: directory
-  
+      mode: '0755'
+      
   #Monta directory
   - name: Mounting docker directory
     shell: sudo mount /dev/xvdb "{{ docker_path}}" && echo Present || echo Absent
@@ -35,7 +37,6 @@
     
   #Monta volume all'avvio qualora non lo sia
   - name: Editing fstab
-    become: yes
     lineinfile:
       path: /etc/fstab
       line: UUID={{ volume_UUID.stdout }} {{ docker_path }}   xfs     defaults,nofail 0 2
@@ -44,21 +45,26 @@
     
   #Ricarica demone di sistema
   - name: Reloading system services
-    become: yes
     systemd:
       daemon_reload: yes
     when: volume_UUID.stdout not in fstab_result.stdout
     
+  #Acquisisci info sui pacchetti installati sul sistema
+  - name: Gathering system packages informations
+    package_facts:
+      manager: auto
+  
   #Installa Docker
   - name: Checking current distribution
     set_fact:
         distribution: "{{ ansible_distro }}"
-        
+    when: '"docker-ce" not in ansible_facts.packages'
+      
   - name: Downloading signing key
     rpm_key:
       key: "https://download.docker.com/linux/{{ distribution }}/gpg"
       state: present
-    become: yes
+    when: '"docker-ce" not in ansible_facts.packages'
     
   - name: Adding repository into system repo list
     yum_repository:
@@ -68,7 +74,7 @@
       enabled: true
       gpgcheck: true
       gpgkey: "https://download.docker.com/linux/{{ distribution }}/gpg"
-    become: yes
+    when: '"docker-ce" not in ansible_facts.packages'
     
   - name: Installing Docker
     yum:
@@ -78,15 +84,59 @@
         - containerd.io
         - docker-compose-plugin
       state: present
-    become: yes
+    when: '"docker-ce" not in ansible_facts.packages'
     
-  - name: Start Docker
+  - name: Enabling Docker as system service
     service:
-      name: "docker"
+      name: docker
       enabled: true
       state: started
-    become: yes
+    when: '"docker-ce" not in ansible_facts.packages'
+   
+  #Controlla se l'attuale directory di docker e' stata gia' spostata
+  - name: Registering real docker system directory
+    stat:
+      path: '{{ docker_path }}/volumes'
+    register: docker_real_dir
+          
+  #Sposta la docker directory nella partizione dedicata   
+  - name: Moving docker directory...stopping docker service
+    service:
+      name: docker 
+      state: stopped
+    when: docker_real_dir.stat.exists == false
     
-      
+  - name: Configuring docker daemon to new directory location 
+    copy:
+      content: "{'data-root': '{{ docker_path }}'}"
+      dest: /etc/docker/daemon.json
+    when: docker_real_dir.stat.exists == false
     
+  - name: Setting docker directory permissions
+    file: 
+      path: /var/lib/docker
+      mode: '0755'
+      recurse: yes
+    when: docker_real_dir.stat.exists == false
   
+  - name: Installing rsync
+    yum:
+      name: rsync
+      state: present
+    when: '"rsync" not in ansible_facts.packages'
+  
+  - name: Syncing directories
+    shell: sudo rsync -a /var/lib/docker "{{ user_path }}"
+    when: docker_real_dir.stat.exists == false
+    
+  - name: Renaming old docker directory
+    shell: sudo mv /var/lib/docker /var/lib/docker.old
+    when: docker_real_dir.stat.exists == false
+  
+  - name: Starting docker service
+    service:
+      name: docker 
+      state: started
+    when: docker_real_dir.stat.exists == false
+    
+    
