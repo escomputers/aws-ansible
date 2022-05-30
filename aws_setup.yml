@@ -8,19 +8,10 @@
   #Importa variabili utente
   vars_files:
     - "group_vars/all/vars.yml"
-  
+    
   roles:
     - requirements
-    
-  #collections:
-  #  - name: "amazon.aws"
-  #    version: "3.2.0"
-  #   source: "https://galaxy.ansible.com"
-      
-  #  - name: "community.general"
-  #    version: "4.8.1"
-  #    source: "https://galaxy.ansible.com"
-  
+
   tasks:   
   #Connessione all'account aws
   - name: Connecting to Aws account
@@ -155,8 +146,8 @@
       dest: inventory.yml
     
   #Passa al playbook di configurazione VM
-  #- name: Running next playbook
-  #  shell: ansible-playbook -i inventory.yml vm_setup.yml --ask-vault-pass
+  - name: Running next playbook
+    shell: ansible-playbook -i inventory.yml vm_setup.yml --ask-vault-pass
 
      
     
