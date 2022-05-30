@@ -1,0 +1,12 @@
+- hosts: swarm_managers
+  become: yes
+  gather_facts: no
+  
+  tasks:  
+  - name: Check if Swarm has already been Initialized
+    shell: docker node ls
+    register: swarm_status
+
+  - name:
+    debug:
+      var: swarm_status

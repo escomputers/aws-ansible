@@ -4,26 +4,29 @@
   hosts: aws_instances
   become: yes
   gather_facts: no
+  
+  tasks:  
 
-  tasks:   
   #Crea filesystem per la partizione docker
   - name: Formatting empy volume with XFS
-    shell: sudo mkfs -t xfs /dev/xvdb && echo Present || echo Absent
-    register: filesystem
-    when: false
-  
+    filesystem:
+      fstype: xfs
+      dev: /dev/xvdb
+
   #Crea directory per docker storage
   - name: Creating docker directory
     file: 
       path: "{{ docker_path }}"
       state: directory
-      mode: '0755'
+      mode: '0770'
       
   #Monta directory
   - name: Mounting docker directory
-    shell: sudo mount /dev/xvdb "{{ docker_path}}" && echo Present || echo Absent
-    register: mount_docker_dir
-    when: false
+    mount:
+      src: /dev/xvdb
+      path: "{{ docker_path }}"
+      fstype: xfs
+      state: present
     
   #Prendi l'identificativo del volume non root
   - name: Getting volume UUID
@@ -106,16 +109,17 @@
       state: stopped
     when: docker_real_dir.stat.exists == false
     
-  - name: Configuring docker daemon to new directory location 
+  - name: Configuring docker daemon
     copy:
-      content: "{'data-root': '{{ docker_path }}'}"
+      content: '{"data-root": "{{ docker_path }}", "log-driver": "json-file", "log-opts": {"max-size": "10m","max-file": "3"}
+      }'
       dest: /etc/docker/daemon.json
     when: docker_real_dir.stat.exists == false
     
   - name: Setting docker directory permissions
     file: 
       path: /var/lib/docker
-      mode: '0755'
+      mode: '0770'
       recurse: yes
     when: docker_real_dir.stat.exists == false
   
@@ -132,11 +136,21 @@
   - name: Renaming old docker directory
     shell: sudo mv /var/lib/docker /var/lib/docker.old
     when: docker_real_dir.stat.exists == false
-  
+    
   - name: Starting docker service
     service:
       name: docker 
       state: started
     when: docker_real_dir.stat.exists == false
-    
+  
+  #Aggiungi utente al gruppo docker 
+  - name: Adding current user to docker group
+    user:
+      name: "{{ instance_user }}"
+      groups: docker
+      append: yes
+      
+
+      
+
     

@@ -21,7 +21,17 @@
       aws configure set default.region "{{ region }}"
     tags:
       - connect
-          
+            
+  #Filtra instanze
+  - name: Getting instances network informations
+    community.aws.ec2_instance_info:
+      filters:
+        "tag:Name": public-withebs-instance
+        instance-state-name: ["running"]
+    register: instances_data
+    tags:
+      - get_instance_info 
+      
   #Crea utente IAM
   - name: Creating IAM user
     community.aws.iam_user:
@@ -32,7 +42,8 @@
     register: add_user_result
     tags:
       - add_user
-      
+    when: not instances_data.instances
+    
   #Crea chiavi di accesso per l'utente IAM
   - name: Creating aws user's key
     community.aws.iam_access_key:
@@ -40,6 +51,7 @@
       rotate_keys: yes
     tags:
       - add_user_keys
+    when: not instances_data.instances
     
   #Crea gruppo utente, crea policy per accesso EC2 completo e aggiungi utente al gruppo
   - name: Creating aws user group, policy and adding user to it
@@ -53,17 +65,19 @@
     register: add_group_ec2full_add_user
     tags:
       - add_group_ec2full_add_user
+    when: not instances_data.instances
     
   #Crea coppia chiavi per accesso remoto
   - name: Creating key-pair
     amazon.aws.ec2_key:
       name: "access-key"
     register: ec2_key
+    when: not instances_data.instances
     
   #Salva coppia chiavi in locale
   - name: Saving keys
     copy: content="{{ ec2_key.key.private_key }}" dest="./public-withebs-instance.pem" mode=0600
-    when: ec2_key.changed
+    when: ec2_key.changed and not instances_data.instances
   
   #Crea gruppo di sicurezza con SSH abilitato per le istanze
   - name: Creating security-group for SSH connections
@@ -79,7 +93,8 @@
       state: present
     tags:
       - add_instance_security_group
-      
+    when: not instances_data.instances
+  
   #Crea coppia chiavi SSH e instanze EC2
   - name: Creating EC2 instances
     amazon.aws.ec2_instance:
@@ -88,7 +103,7 @@
       image_id: "{{ os }}"
       key_name: "access-key"
       security_group: "default_sg"
-      count: "{{ instance_number }}"
+      exact_count: "{{ instance_number }}"
       volumes:
         - device_name: /dev/sda1
           ebs:
@@ -100,22 +115,14 @@
             delete_on_termination: true
     tags:
       - add_instances
-           
-  #Attendi il tempo di inizializzione istanze
+    when: not instances_data.instances
+ 
+  #Attendi inizializzione istanze
   - name: Waiting instances to be initialized
     wait_for:
       timeout: 30
     delegate_to: localhost
-    
-  #Filtra instanze
-  - name: Getting instances network informations
-    community.aws.ec2_instance_info:
-      filters:
-        "tag:Name": public-withebs-instance
-        instance-state-name: ["running"]
-    register: instances_data
-    tags:
-      - get_instance_info
+    when: not instances_data.instances
     
   #Prendi indirizzi IP
   - name: Getting IP addresses
@@ -125,6 +132,7 @@
     with_items: "{{ instances_data.instances }}"
     tags:
       - get_ipv4
+    when: not instances_data.instances
     
   #Salvali su file per inventory
   - name: Creating inventory
@@ -144,10 +152,18 @@
       ansible_ssh_private_key_file = public-withebs-instance.pem
       "
       dest: inventory.yml
+    when: not instances_data.instances
     
-  #Passa al playbook di configurazione VM
-  - name: Running next playbook
-    shell: ansible-playbook -i inventory.yml vm_setup.yml --ask-vault-pass
+  #Attendi inizializzione ssh
+  - name: Waiting SSH to be initialized
+    wait_for:
+      timeout: 30
+    delegate_to: localhost
+    when: not instances_data.instances
+    
+#Passa al playbook di configurazione VM
+- name: Running next playbook
+  import_playbook: vm_setup.yml
 
      
     
