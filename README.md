@@ -15,7 +15,7 @@ ansible-vault edit group_vars/all/pass.yml
 ec2_key: (your AWS account access key)
 ec2_secret: (your AWS account secret key)
 ```
-# 3) Set your desired settings into variables file
+# 3) Set your settings into variables file
 ```
 #edit file group_vars/all/vars.yml
 ```
