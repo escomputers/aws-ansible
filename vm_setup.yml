@@ -1,12 +1,8 @@
----
-
-- name: VM setup
-  hosts: aws_instances
+- hosts: aws_instances
+  #connection: ssh
   become: yes
-  gather_facts: no
   
-  tasks:  
-
+  tasks:
   #Crea filesystem per la partizione docker
   - name: Formatting empy volume with XFS
     filesystem:
@@ -150,7 +146,6 @@
       groups: docker
       append: yes
       
-
-      
-
-    
+  #Configura Docker swarm
+  #- name: Configuring Docker swarm
+  #  shell: ansible-playbook -i inventory.yml VM_setup.yml --ask-vault-pass
